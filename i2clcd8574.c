@@ -3,11 +3,11 @@
 #define CRIT_BEG(d, error) if(down_interruptible(&d->sem)) return -error
 #define CRIT_END(d) up(&d->sem)
 
-static uint busno = 1;      //I2C Bus number
+static uint busno = 2;      //I2C Bus number
 static uint address = DEFAULT_CHIP_ADDRESS; //Device address
 static uint topo = LCD_DEFAULT_ORGANIZATION;
-static uint cursor = 1;
-static uint blink = 1;
+static uint cursor = 0;
+static uint blink = 0;
 static IOCTLDescription_t ioctls[] = {
   { .ioctlcode = LCD_IOCTL_GETCHAR, .name = "GETCHAR", },
   { .ioctlcode = LCD_IOCTL_SETCHAR, .name = "SETCHAR", },
@@ -44,7 +44,7 @@ module_param(blink, uint, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
 module_param(topo, uint, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
 module_param(major, int, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
 
-MODULE_PARM_DESC(busno, " I2C Bus number, default 1");
+MODULE_PARM_DESC(busno, " I2C Bus number, default 2");
 MODULE_PARM_DESC(address, " LCD I2C Address, default 0x27");
 MODULE_PARM_DESC(pinout, " I2C module pinout configuration, eight "
                          "numbers\n\t\trepresenting following LCD module"
@@ -62,7 +62,7 @@ MODULE_PARM_DESC(topo, " Display organization, following values are currently su
                         "\t\t5 - 16x1 Type 1\n"
                         "\t\t6 - 16x1 Type 2\n"
 			"\t\t7 - 8x2\n"
-                        "\t\tDefault set to 16x2");
+                        "\t\tDefault set to 20x2");
 
 static int lcdi2c_open(struct inode *inode, struct file *file)
 {
@@ -261,7 +261,7 @@ static int lcdi2c_probe(struct i2c_client *client, const struct i2c_device_id *i
     data->major = major;
 
     lcdinit(data, topo);
-    lcdprint(data, "HD44780\nDriver");
+    lcdprint(data, "I2C\nAlphanumeric\nLCD");
 
     dev_info(&client->dev, "%ux%u LCD using bus 0x%X, at address 0x%X", 
 	     data->organization.columns, 
@@ -385,6 +385,33 @@ static ssize_t lcdi2c_cursorpos_show(struct device *dev,
     CRIT_END(data);
     return count;
 }
+
+
+static ssize_t lcdi2c_print(struct device* dev, 
+         struct device_attribute* attr, 
+         const char* buf, size_t count)
+{
+    uint8_t i, addr, memaddr;
+    
+    CRIT_BEG(data, ERESTARTSYS);
+    
+    lcdprint(data, buf);
+  //   if (count > 0)
+  //   {
+  // memaddr = data->column + (data->row * data->organization.columns); 
+  // for(i = 0; i < count; i++)
+  // {
+  //   addr = (memaddr + i) % (data->organization.columns * data->organization.rows);
+  //   data->buffer[addr] = buf[i];
+  // }
+  // lcdflushbuffer(data);        
+  //   }
+    
+    CRIT_END(data);
+    return count;
+}
+
+
 
 static ssize_t lcdi2c_data(struct device* dev, 
 			   struct device_attribute* attr, 
@@ -681,6 +708,8 @@ DEVICE_ATTR(customchar, S_IWUSR | S_IWGRP | S_IRUSR | S_IRGRP | S_IROTH,
 DEVICE_ATTR(character, S_IWUSR | S_IWGRP | S_IRUSR | S_IRGRP | S_IROTH, 
 	    lcdi2c_char_show, lcdi2c_char );
 
+DEVICE_ATTR(print, S_IWUSR | S_IWGRP, NULL, lcdi2c_print);
+
 static const struct attribute *i2clcd_attrs[] = {
 	&dev_attr_reset.attr,
 	&dev_attr_backlight.attr,
@@ -694,6 +723,7 @@ static const struct attribute *i2clcd_attrs[] = {
         &dev_attr_scrollhz.attr,
         &dev_attr_customchar.attr,
 	&dev_attr_character.attr,
+  &dev_attr_print.attr,
 	NULL,
 };
 
